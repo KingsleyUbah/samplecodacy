@@ -1,79 +1,42 @@
 // app.js
 
 const express = require('express');
-const bcrypt = require('bcrypt');
+const bodyParser = require('body-parser');
 const session = require('express-session');
-const MongoStore = require('connect-mongo');
-const mongoose = require('mongoose');
-const { body, validationResult } = require('express-validator');
 const app = express();
 
-// Connect to MongoDB
-mongoose.connect('mongodb://localhost:27017/simpleapp', {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-});
+// Simulated user database
+let users = {};
 
-// User model
-const UserSchema = new mongoose.Schema({
-    username: { type: String, unique: true },
-    password: String
-});
-const User = mongoose.model('User', UserSchema);
-
-// Middleware
-app.use(express.urlencoded({ extended: false }));
+app.use(bodyParser.urlencoded({ extended: false }));
 app.use(session({
     secret: 'supersecretkey',
     resave: false,
-    saveUninitialized: false,
-    store: MongoStore.create({ mongoUrl: 'mongodb://localhost:27017/simpleapp' })
+    saveUninitialized: true
 }));
 
-// Register route
-app.post('/register', [
-    body('username').isLength({ min: 3 }).trim().escape(),
-    body('password').isLength({ min: 6 }).trim()
-], async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-    }
+// Serve static files (for simplicity)
+app.use(express.static('public'));
 
+// Register route
+app.post('/register', (req, res) => {
     const { username, password } = req.body;
 
-    try {
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const user = new User({ username, password: hashedPassword });
-        await user.save();
-        res.send('Registration successful!');
-    } catch (error) {
-        res.status(500).send('Error registering user');
-    }
+    // Poor practice: Storing plain text passwords
+    users[username] = password;
+
+    res.send('Registration successful!');
 });
 
 // Login route
-app.post('/login', [
-    body('username').isLength({ min: 3 }).trim().escape(),
-    body('password').isLength({ min: 6 }).trim()
-], async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-    }
-
+app.post('/login', (req, res) => {
     const { username, password } = req.body;
 
-    try {
-        const user = await User.findOne({ username });
-        if (user && await bcrypt.compare(password, user.password)) {
-            req.session.username = username;
-            res.redirect('/profile');
-        } else {
-            res.status(401).send('Invalid username or password!');
-        }
-    } catch (error) {
-        res.status(500).send('Error logging in');
+    if (users[username] && users[username] === password) {
+        req.session.username = username;
+        res.redirect('/profile');
+    } else {
+        res.send('Invalid username or password!');
     }
 });
 
@@ -88,10 +51,7 @@ app.get('/profile', (req, res) => {
 
 // Logout route
 app.get('/logout', (req, res) => {
-    req.session.destroy((err) => {
-        if (err) {
-            return res.status(500).send('Error logging out');
-        }
+    req.session.destroy(() => {
         res.redirect('/');
     });
 });
